@@ -2,7 +2,7 @@
 
 var URL_ACTUALIZACION = "https://raw.githubusercontent.com/carlosamarista02-collab/silkroad-macro/main/silkroad_alchemy_macro.js";
 var URL_BASE_IMAGENES = "https://raw.githubusercontent.com/carlosamarista02-collab/silkroad-macro/main/";
-var VERSION_ACTUAL = "1.3.5";
+var VERSION_ACTUAL = "1.3.6";
 
 var PLANTILLAS_REPO = [
   "pergamino.png",
@@ -1027,21 +1027,24 @@ function tocarFuseEnJuegoDirecto() {
 }
 
 function abrirJobSroPrueba() {
-  var nombresDirectos = ["JOB SRO", "Job SRO", "Job Sro", "JobSro", "Silkroad"];
-  var pistas = ["job sro", "jobsro", "job", "sro", "silkroad"];
+  var miPaquete = "";
+  try {
+    miPaquete = String(context.getPackageName() || "");
+  } catch (e) {}
+
+  var nombresDirectos = ["JOB SRO", "Job SRO", "Job Sro", "JobSro", "Silkroad Origin", "Silkroad"];
+  var pistas = ["jobsro", "job sro", "silkroad"];
 
   for (var i = 0; i < nombresDirectos.length; i++) {
     try {
-      if (app.launchApp(nombresDirectos[i])) {
+      if (nombresDirectos[i] !== "silkroad_alchemy_macro" && app.launchApp(nombresDirectos[i])) {
         var msgOk = "Abriendo " + nombresDirectos[i];
         agregarLog(msgOk);
         setEstado(msgOk);
         toast(msgOk);
         return true;
       }
-    } catch (e) {
-      agregarLog("launchApp('" + nombresDirectos[i] + "') falló: " + e.message);
-    }
+    } catch (e) {}
   }
 
   try {
@@ -1049,8 +1052,17 @@ function abrirJobSroPrueba() {
     var pkgs = pm.getInstalledPackages(0);
     for (var j = 0; j < pkgs.size(); j++) {
       var p = pkgs.get(j);
-      var label = String(p.applicationInfo.loadLabel(pm) || "");
       var pkgName = String(p.packageName || "");
+
+      if (
+        pkgName === miPaquete ||
+        pkgName.indexOf("autojs") !== -1 ||
+        pkgName.indexOf("silkroad_alchemy_macro") !== -1
+      ) {
+        continue;
+      }
+
+      var label = String(p.applicationInfo.loadLabel(pm) || "");
       var combo = (label + " " + pkgName).toLowerCase();
 
       for (var k = 0; k < pistas.length; k++) {
@@ -1074,7 +1086,7 @@ function abrirJobSroPrueba() {
     agregarLog("Error buscando paquete JOB SRO: " + err.message);
   }
 
-  var msgNo = "No se encontró JOB SRO en la lista de apps. Ábrela manualmente y toca FLOTANTE.";
+  var msgNo = "No se encontró JOB SRO. Ábrela manualmente y usa el FLOTANTE.";
   agregarLog(msgNo);
   setEstado("JOB SRO no encontrada");
   toast(msgNo);
