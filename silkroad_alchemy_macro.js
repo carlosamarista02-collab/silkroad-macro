@@ -1,6 +1,6 @@
 "ui";
 
-var URL_ACTUALIZACION = "https://raw.githubusercontent.com/TU_USUARIO/TU_REPOSITORIO/main/main.js";
+var URL_ACTUALIZACION = "https://github.com/carlosamarista02-collab/silkroad-macro.git";
 var VERSION_ACTUAL = "1.1.1";
 
 try {
