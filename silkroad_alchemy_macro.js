@@ -1,7 +1,7 @@
 "ui";
 
-var URL_ACTUALIZACION = "https://raw.githubusercontent.com/carlosamarista02-collab/silkroad-macro/main/main.js";
-var VERSION_ACTUAL = "1.3.0";
+var URL_ACTUALIZACION = "https://raw.githubusercontent.com/carlosamarista02-collab/silkroad-macro/main/silkroad_alchemy_macro.js";
+var VERSION_ACTUAL = "1.3.1";
 
 try {
   activity.resizeTask && activity.resizeTask(700, 1100);
@@ -274,7 +274,6 @@ function localizarArchivoPlantilla(dir, nombreBase) {
   return null;
 }
 
-// Escanea toda la pantalla buscando plantillas y contando elixires y lucky
 function escanearPantallaCompleta(cfg) {
   var resultado = {
     menuHit: null,
@@ -825,6 +824,41 @@ function tocarFuseEnJuegoDirecto() {
   });
 }
 
+function abrirJobSroPrueba() {
+  var nombresApp = ["Job Sro", "JobSro", "Job SRO", "Silkroad"];
+  for (var i = 0; i < nombresApp.length; i++) {
+    try {
+      if (app.launchApp(nombresApp[i])) {
+        agregarLog("Abriendo juego con app.launchApp('" + nombresApp[i] + "')");
+        toast("Abriendo " + nombresApp[i] + "...");
+        return true;
+      }
+    } catch (e) {}
+  }
+
+  try {
+    var pm = context.getPackageManager();
+    var pkgs = pm.getInstalledPackages(0);
+    for (var j = 0; j < pkgs.size(); j++) {
+      var p = pkgs.get(j);
+      var label = String(p.applicationInfo.loadLabel(pm) || "");
+      var pkgName = String(p.packageName || "");
+      if (label.toLowerCase().indexOf("job") !== -1 || label.toLowerCase().indexOf("sro") !== -1 || pkgName.toLowerCase().indexOf("sro") !== -1) {
+        app.launch(pkgName);
+        agregarLog("Abriendo juego detectado: " + label + " (" + pkgName + ")");
+        toast("Abriendo " + label + "...");
+        return true;
+      }
+    }
+  } catch (err) {
+    agregarLog("Error buscando app Job Sro: " + err.message);
+  }
+
+  agregarLog("No se encontró una app instalada con nombre Job Sro / SRO");
+  toast("No se encontró Job Sro instalada");
+  return false;
+}
+
 function iniciarProcesoAlchemy() {
   var cfg = (vistaActual === "alchemy" && ui.et_item_name) ? leerConfigAlchemy() : leerConfigDesdePrefs();
   cfg.modo = "Alchemy";
@@ -839,29 +873,11 @@ function iniciarProcesoAlchemy() {
   workerThread = threads.start(function () {
     try {
       reiniciarStats("Alchemy");
-      if (!prepararEntornoYPermisos(cfg)) return;
-
-      mostrarFlotante(
-        cfg.itemName + " [" + cfg.plusTexto + "]",
-        formatearSoloDetectado(statsSesion.personaje, statsSesion.nivel)
-      );
-
-      var escaneoPrevio = escanearPantallaCompleta(cfg);
-      var abierto = false;
-      if (escaneoPrevio.menuHit) {
-        tapPunto(escaneoPrevio.menuHit.x, escaneoPrevio.menuHit.y, cfg.delayTap);
-        agregarLog("Pergamino/Menú tocado (" + escaneoPrevio.menuHit.name + ".png), esperando opciones...");
-        sleep(800);
-        abierto = detectarYTocar(cfg, ["alchemy", "Alchemy", "btn_alchemy"], "alchemy.png", cfg.delayTap);
-      } else {
-        abierto = abrirMenuYTocarAlchemy(cfg);
-      }
-      agregarLog("Menú -> Alchemy: " + (abierto ? "OK" : "Sin match de imagen"));
-
-      autoDetectarCantidadesEnPantalla(cfg);
-      ejecutarAlchemy(cfg);
+      setEstado("Abriendo Job Sro...");
+      agregarLog("Botón INICIAR pulsado -> intentando abrir Job Sro");
+      abrirJobSroPrueba();
     } catch (err) {
-      detenerMacro("Error: " + err.message);
+      detenerMacro("Error al abrir Job Sro: " + err.message);
     }
   });
 }
