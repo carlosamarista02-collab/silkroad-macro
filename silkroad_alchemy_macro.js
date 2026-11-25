@@ -2,7 +2,7 @@
 
 var URL_ACTUALIZACION = "https://raw.githubusercontent.com/carlosamarista02-collab/silkroad-macro/main/silkroad_alchemy_macro.js";
 var URL_BASE_IMAGENES = "https://raw.githubusercontent.com/carlosamarista02-collab/silkroad-macro/main/";
-var VERSION_ACTUAL = "1.3.9";
+var VERSION_ACTUAL = "1.4.0";
 
 var PLANTILLAS_REPO = [
   "pergamino.png",
@@ -741,7 +741,7 @@ function tieneSuperposicion() {
 }
 
 function abrirAjusteAccesibilidad() {
-  toast("Activa Accesibilidad para AutoJs6");
+  toast("Activa Accesibilidad para AutoJs6 / Macro");
   try {
     app.startActivity({ action: "android.settings.ACCESSIBILITY_SETTINGS" });
   } catch (e) {}
@@ -1035,6 +1035,24 @@ function tocarFuseEnJuegoDirecto() {
   });
 }
 
+function lanzarPaqueteDirecto(pkg) {
+  try {
+    var pm = context.getPackageManager();
+    var intent = pm.getLaunchIntentForPackage(pkg);
+    if (intent) {
+      intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK);
+      context.startActivity(intent);
+      return true;
+    }
+  } catch (e) {}
+
+  try {
+    if (app.launch(pkg)) return true;
+  } catch (e) {}
+
+  return false;
+}
+
 function abrirJobSroPrueba() {
   var miPaquete = "";
   try {
@@ -1057,11 +1075,37 @@ function abrirJobSroPrueba() {
       l.indexOf("jobsro") !== -1 ||
       p.indexOf("jobsro") !== -1 ||
       p.indexOf("job_sro") !== -1 ||
-      p.indexOf("job.sro") !== -1
+      p.indexOf("job.sro") !== -1 ||
+      p.indexOf("silkroad") !== -1 ||
+      p.indexOf("gamota") !== -1
     );
   }
 
-  var nombresJobSro = ["JOB SRO", "Job SRO", "Job Sro", "JobSro"];
+  // 1. Intento por paquetes conocidos de JOB SRO / Silkroad Origin en Android
+  var paquetesConocidos = [
+    "com.gamota.silkroad",
+    "com.vTC.silkroad",
+    "com.jobsro.mobile",
+    "com.silkroad.jobsro",
+    "com.silkroad.origin",
+    "com.game.jobsro"
+  ];
+
+  for (var k = 0; k < paquetesConocidos.length; k++) {
+    var pkgP = paquetesConocidos[k];
+    if (!esAppPropia(pkgP)) {
+      if (lanzarPaqueteDirecto(pkgP)) {
+        var msgPkgDir = "Abriendo " + pkgP;
+        agregarLog(msgPkgDir);
+        setEstado(msgPkgDir);
+        toast(msgPkgDir);
+        return true;
+      }
+    }
+  }
+
+  // 2. Intento por app.launchApp
+  var nombresJobSro = ["JOB SRO", "Job SRO", "Job Sro", "JobSro", "Silkroad Origin"];
   for (var i = 0; i < nombresJobSro.length; i++) {
     try {
       if (app.launchApp(nombresJobSro[i])) {
@@ -1074,6 +1118,7 @@ function abrirJobSroPrueba() {
     } catch (e) {}
   }
 
+  // 3. Intento por queryIntentActivities
   try {
     var pm = context.getPackageManager();
     var mainIntent = new android.content.Intent(android.content.Intent.ACTION_MAIN, null);
@@ -1087,24 +1132,20 @@ function abrirJobSroPrueba() {
 
       var labelAct = String(act.loadLabel(pm) || "");
       if (esJobSro(labelAct, pkgAct)) {
-        var intentAct = pm.getLaunchIntentForPackage(pkgAct);
-        if (intentAct) {
-          intentAct.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK);
-          context.startActivity(intentAct);
-        } else {
-          app.launch(pkgAct);
+        if (lanzarPaqueteDirecto(pkgAct)) {
+          var msgAct = "Abriendo " + labelAct + " (" + pkgAct + ")";
+          agregarLog(msgAct);
+          setEstado(msgAct);
+          toast(msgAct);
+          return true;
         }
-        var msgAct = "Abriendo " + labelAct + " (" + pkgAct + ")";
-        agregarLog(msgAct);
-        setEstado(msgAct);
-        toast(msgAct);
-        return true;
       }
     }
   } catch (errAct) {
     agregarLog("Error consultando lanzadores para JOB SRO: " + errAct.message);
   }
 
+  // 4. Intento por getInstalledPackages
   try {
     var pm2 = context.getPackageManager();
     var pkgs = pm2.getInstalledPackages(0);
@@ -1115,25 +1156,20 @@ function abrirJobSroPrueba() {
 
       var label = String(p.applicationInfo.loadLabel(pm2) || "");
       if (esJobSro(label, pkgName)) {
-        var intent = pm2.getLaunchIntentForPackage(pkgName);
-        if (intent) {
-          intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK);
-          context.startActivity(intent);
-        } else {
-          app.launch(pkgName);
+        if (lanzarPaqueteDirecto(pkgName)) {
+          var msgPkg = "Abriendo " + label + " (" + pkgName + ")";
+          agregarLog(msgPkg);
+          setEstado(msgPkg);
+          toast(msgPkg);
+          return true;
         }
-        var msgPkg = "Abriendo " + label + " (" + pkgName + ")";
-        agregarLog(msgPkg);
-        setEstado(msgPkg);
-        toast(msgPkg);
-        return true;
       }
     }
   } catch (err) {
     agregarLog("Error buscando paquete JOB SRO: " + err.message);
   }
 
-  var msgNo = "No se encontró la app JOB SRO en el dispositivo.";
+  var msgNo = "JOB SRO restringida por Android en APK. Abre el juego y pulsa FLOTANTE.";
   agregarLog(msgNo);
   setEstado(msgNo);
   toast(msgNo);
