@@ -1,7 +1,45 @@
 "ui";
 
 var URL_ACTUALIZACION = "https://raw.githubusercontent.com/carlosamarista02-collab/silkroad-macro/main/silkroad_alchemy_macro.js";
-var VERSION_ACTUAL = "1.3.2";
+var URL_BASE_IMAGENES = "https://raw.githubusercontent.com/carlosamarista02-collab/silkroad-macro/main/";
+var VERSION_ACTUAL = "1.3.4";
+
+var PLANTILLAS_REPO = [
+  "pergamino.png",
+  "menu.png",
+  "alchemy.png",
+  "Fuse.png",
+  "fuse.png",
+  "items.png",
+  "lv.png",
+  "nombre.png",
+  "nombre_itens.jpg",
+  "page_1.png",
+  "page_2.png",
+  "page_3.png",
+  "plus_1.png",
+  "plus_2.jpg",
+  "plus_0_1.png",
+  "estado_plus_0.png",
+  "elixir_weapon.png",
+  "elixir_shield.png",
+  "elixir_protector.png",
+  "elixir_acceaorio.png",
+  "elixir_accessory.png",
+  "elixir_special.png",
+  "Lucky_Power_1th.png",
+  "Lucky_Power_2th.png",
+  "Lucky_Power_3th.png",
+  "Lucky_Power_4th.png",
+  "Lucky_Power_5th.png",
+  "Lucky_Power_6th.png",
+  "Lucky_Power_7th.png",
+  "Lucky_Power_8th.png",
+  "broken.png",
+  "sin_elixir.png",
+  "target.png",
+  "confirm.png"
+];
 
 try {
   activity.resizeTask && activity.resizeTask(700, 1100);
@@ -40,6 +78,7 @@ var LUCKY_DEGREES = [
 var colaItensDetec = [];
 var indiceItemActual = 0;
 var ultimoEscaneoPantalla = {
+  carpetaUsada: "/storage/emulated/0/SilkroadMacro/",
   menuHit: null,
   elixiresPorTipo: {
     weapon: 0,
@@ -84,6 +123,152 @@ function agregarLog(msg) {
     logsHistorial.shift();
   }
   log(linea);
+}
+
+function copiarImagenesLocalesSiFaltan(dirDestino) {
+  var destino = dirDestino || "/storage/emulated/0/SilkroadMacro/";
+  if (!destino.endsWith("/")) destino += "/";
+  files.createWithDirs(destino);
+
+  var origenes = [
+    "/storage/emulated/0/Scripts/SilkroadMacro/",
+    "/storage/emulated/0/Scripts/",
+    "./SilkroadMacro/",
+    "./"
+  ];
+
+  try {
+    var fuente = engines.myEngine().getSource();
+    if (fuente) {
+      var p = String(fuente.toString());
+      var idx = p.lastIndexOf("/");
+      if (idx > 0) {
+        var baseScript = p.substring(0, idx + 1);
+        origenes.unshift(baseScript + "SilkroadMacro/");
+        origenes.unshift(baseScript);
+      }
+    }
+  } catch (e) {}
+
+  var copiados = 0;
+  for (var o = 0; o < origenes.length; o++) {
+    var dirSrc = origenes[o];
+    if (!dirSrc.endsWith("/")) dirSrc += "/";
+    if (dirSrc === destino || !files.exists(dirSrc)) continue;
+
+    try {
+      var lista = files.listDir(dirSrc, function (name) {
+        return /\.(png|jpg|jpeg)$/i.test(name);
+      });
+
+      for (var i = 0; i < lista.length; i++) {
+        var nombreArchivo = lista[i];
+        if (nombreArchivo === "item_auto.png") continue;
+        var rutaSrc = dirSrc + nombreArchivo;
+        var rutaDst = destino + nombreArchivo;
+        if (!files.exists(rutaDst)) {
+          files.copy(rutaSrc, rutaDst);
+          copiados++;
+        }
+      }
+    } catch (e) {}
+  }
+
+  return copiados;
+}
+
+function descargarPlantillasDesdeGitHub(dirDestino) {
+  var destino = dirDestino || "/storage/emulated/0/SilkroadMacro/";
+  if (!destino.endsWith("/")) destino += "/";
+  files.createWithDirs(destino);
+
+  var descargadas = 0;
+  for (var i = 0; i < PLANTILLAS_REPO.length; i++) {
+    var nombre = PLANTILLAS_REPO[i];
+    var rutaLocal = destino + nombre;
+    if (files.exists(rutaLocal)) continue;
+
+    try {
+      var url = URL_BASE_IMAGENES + encodeURIComponent(nombre) + "?v=" + new Date().getTime();
+      var res = http.get(url);
+      if (res && res.statusCode === 200) {
+        var bytes = res.body.bytes();
+        if (bytes && bytes.length > 50) {
+          files.writeBytes(rutaLocal, bytes);
+          descargadas++;
+        }
+      }
+    } catch (e) {}
+  }
+
+  return descargadas;
+}
+
+function sincronizarCarpetaImagenes(dirDestino, forzarDescarga) {
+  var destino = dirDestino || "/storage/emulated/0/SilkroadMacro/";
+  if (!destino.endsWith("/")) destino += "/";
+  files.createWithDirs(destino);
+
+  var copiados = copiarImagenesLocalesSiFaltan(destino);
+  var descargados = 0;
+
+  var tieneBase =
+    files.exists(destino + "menu.png") ||
+    files.exists(destino + "pergamino.png") ||
+    files.exists(destino + "elixir_weapon.png") ||
+    files.exists(destino + "Fuse.png") ||
+    files.exists(destino + "fuse.png");
+
+  if (forzarDescarga || !tieneBase) {
+    descargados = descargarPlantillasDesdeGitHub(destino);
+  }
+
+  if (copiados > 0 || descargados > 0) {
+    agregarLog("Sincronización imágenes (" + destino + "): +" + copiados + " locales, +" + descargados + " desde GitHub");
+  }
+
+  return destino;
+}
+
+function resolverCarpetaImagenes() {
+  var principal = "/storage/emulated/0/SilkroadMacro/";
+  files.createWithDirs(principal);
+
+  var candidatos = [
+    principal,
+    "/sdcard/SilkroadMacro/",
+    "/storage/emulated/0/Scripts/SilkroadMacro/",
+    "/storage/emulated/0/Scripts/"
+  ];
+
+  try {
+    var fuente = engines.myEngine().getSource();
+    if (fuente) {
+      var p = String(fuente.toString());
+      var idx = p.lastIndexOf("/");
+      if (idx > 0) {
+        var dirScript = p.substring(0, idx + 1);
+        candidatos.push(dirScript + "SilkroadMacro/");
+        candidatos.push(dirScript);
+      }
+    }
+  } catch (e) {}
+
+  var senales = ["pergamino.png", "pergamino.jpg", "menu.png", "menu.jpg", "elixir_weapon.png", "Fuse.png", "fuse.png"];
+
+  for (var i = 0; i < candidatos.length; i++) {
+    var dir = candidatos[i];
+    if (!dir.endsWith("/")) dir += "/";
+    if (!files.exists(dir)) continue;
+
+    for (var s = 0; s < senales.length; s++) {
+      if (files.exists(dir + senales[s])) {
+        return dir;
+      }
+    }
+  }
+
+  return principal;
 }
 
 function reiniciarStats(modo) {
@@ -280,15 +465,19 @@ function obtenerCandidatosLucky(luckyDegree) {
 }
 
 function localizarArchivoPlantilla(dir, nombreBase) {
-  var png = dir + nombreBase + ".png";
+  var base = dir || resolverCarpetaImagenes();
+  if (!base.endsWith("/")) base += "/";
+  var png = base + nombreBase + ".png";
   if (files.exists(png)) return png;
-  var jpg = dir + nombreBase + ".jpg";
+  var jpg = base + nombreBase + ".jpg";
   if (files.exists(jpg)) return jpg;
   return null;
 }
 
 function escanearPantallaCompleta(cfg) {
+  cfg.dir = sincronizarCarpetaImagenes(resolverCarpetaImagenes(), false);
   var resultado = {
+    carpetaUsada: cfg.dir,
     menuHit: null,
     elixiresPorTipo: {
       weapon: 0,
@@ -382,7 +571,8 @@ function escanearPantallaCompleta(cfg) {
       " Sp:" + resultado.elixiresPorTipo.special;
 
     agregarLog(
-      "Escaneo pantalla -> Menú/Pergamino: " +
+      "Carpeta imágenes: " + cfg.dir +
+      " | Pergamino/Menú: " +
       (resultado.menuHit ? resultado.menuHit.name + ".png @ (" + resultado.menuHit.x + "," + resultado.menuHit.y + ")" : "No detectado") +
       " | Elixires [" + resumenElixires + "] | Lucky: " + resultado.luckyTotal
     );
@@ -390,7 +580,7 @@ function escanearPantallaCompleta(cfg) {
     if (resultado.plantillasEncontradas.length > 0) {
       agregarLog("Imágenes identificadas: " + resultado.plantillasEncontradas.join(", "));
     } else {
-      agregarLog("Ninguna plantilla de " + cfg.dir + " coincidió en esta captura");
+      agregarLog("Ninguna plantilla coincidió en " + cfg.dir);
     }
   } catch (err) {
     agregarLog("Error en escaneo total: " + err.message);
@@ -566,9 +756,7 @@ function refrescarEstadoPermisos() {
 }
 
 function prepararEntornoYPermisos(cfg) {
-  try {
-    files.createWithDirs(cfg.dir);
-  } catch (e) {}
+  cfg.dir = sincronizarCarpetaImagenes(resolverCarpetaImagenes(), false);
 
   if (!tieneAccesibilidad()) {
     ui.run(function () { abrirAjusteAccesibilidad(); });
@@ -633,7 +821,8 @@ function actualizarContadoresUI(elixirRest, luckyRest) {
 function mostrarVentanaLog() {
   var elx = ultimoEscaneoPantalla.elixiresPorTipo;
   var resumenEscaneo =
-    "Escaneo -> Pergamino/Menú: " +
+    "Carpeta: " + (ultimoEscaneoPantalla.carpetaUsada || resolverCarpetaImagenes()) + "\n" +
+    "Pergamino/Menú: " +
     (ultimoEscaneoPantalla.menuHit ? ultimoEscaneoPantalla.menuHit.name + ".png" : "No") +
     " | Elixires [W:" + elx.weapon + " S:" + elx.shield + " P:" + elx.protector + " A:" + elx.accessory + " Sp:" + elx.special + "]";
 
@@ -739,7 +928,7 @@ function leerConfigAlchemy() {
     maxTries: Math.max(1, parseInt(ui.et_max_tries.text(), 10) || 300),
     delayTap: Math.max(150, parseInt(ui.et_delay_tap.text(), 10) || 550),
     delayRes: Math.max(500, parseInt(ui.et_delay_res.text(), 10) || 2600),
-    dir: "/sdcard/SilkroadMacro/"
+    dir: resolverCarpetaImagenes()
   };
 
   prefs.put("itemName", itemNameRaw);
@@ -790,7 +979,7 @@ function leerConfigDesdePrefs() {
     maxTries: Math.max(1, parseInt(prefs.get("maxTries", 300), 10) || 300),
     delayTap: Math.max(150, parseInt(prefs.get("delayTap", 550), 10) || 550),
     delayRes: Math.max(500, parseInt(prefs.get("delayRes", 2600), 10) || 2600),
-    dir: "/sdcard/SilkroadMacro/"
+    dir: resolverCarpetaImagenes()
   };
 }
 
@@ -967,7 +1156,7 @@ function mostrarVistaAlchemy() {
                 <text text="Itens detec (mismo ícono/nombre)" textSize="13sp" textColor="#F59E0B" textStyle="bold" layout_weight="1" />
                 <button id="btn_scan_itens" text="Escanear" textSize="10sp" bg="#D97706" textColor="#FFFFFF" h="32" padding="4" />
               </horizontal>
-              <text text="Escanea toda la pantalla: identifica pergamino/imágenes, cuenta elixires por tipo y arma la cola de ítems." textSize="11sp" textColor="#9CA3AF" marginBottom="6" />
+              <text text="Sincroniza plantillas desde GitHub, ubica carpeta de imágenes, identifica pergamino/elixires y arma la cola." textSize="11sp" textColor="#9CA3AF" marginBottom="6" />
               <vertical id="container_itens_detec" />
             </vertical>
           </card>
