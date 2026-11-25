@@ -1,7 +1,7 @@
 "ui";
 
-var URL_ACTUALIZACION = "https://github.com/carlosamarista02-collab/silkroad-macro.git";
-var VERSION_ACTUAL = "1.1.1";
+var URL_ACTUALIZACION = "https://raw.githubusercontent.com/carlosamarista02-collab/silkroad-macro/main/main.js";
+var VERSION_ACTUAL = "1.2.1";
 
 try {
   activity.resizeTask && activity.resizeTask(700, 1100);
@@ -11,7 +11,6 @@ var prefs = storages.create("SilkroadAlchemyApp");
 var workerThread = null;
 var contadorThread = null;
 var floatWin = null;
-var miniIconWin = null;
 var running = false;
 var alchemyActiva = false;
 var paused = false;
@@ -102,42 +101,44 @@ function comprobarYActualizarScript() {
     try {
       var res = http.get(URL_ACTUALIZACION);
       if (!res || res.statusCode !== 200) {
-        toast("No se pudo conectar para actualizar");
-        agregarLog("Error de conexión al buscar actualización");
+        toast("No hay actualización");
+        agregarLog("Actualización omitida: respuesta HTTP " + (res ? res.statusCode : "sin respuesta"));
         return;
       }
 
-      var nuevoCodigo = res.body.string();
-      if (!nuevoCodigo || nuevoCodigo.length < 50) {
-        toast("El archivo remoto no contiene código válido");
-        agregarLog("Actualización omitida: contenido vacío o inválido");
+      var nuevoCodigo = String(res.body.string() || "");
+      var limpio = nuevoCodigo.replace(/^\uFEFF/, "").trim();
+
+      if (limpio.length < 200 || limpio.indexOf("mostrarVistaAlchemy") === -1) {
+        toast("No hay actualización válida");
+        agregarLog("Actualización omitida: contenido remoto incompleto");
         return;
       }
 
       var fuente = engines.myEngine().getSource();
       var rutaScript = fuente ? String(fuente.toString()) : "";
       if (!rutaScript || !files.exists(rutaScript)) {
-        toast("No se encontró la ruta del script local");
-        agregarLog("No se pudo localizar la ruta del script para sobrescribir");
+        toast("No se encontró el archivo local");
+        agregarLog("Actualización omitida: ruta local no encontrada");
         return;
       }
 
-      var codigoActual = files.read(rutaScript);
-      if (codigoActual === nuevoCodigo) {
-        toast("Ya tienes la última versión");
-        agregarLog("Sin cambios nuevos disponibles");
+      var codigoActual = String(files.read(rutaScript) || "");
+      if (codigoActual.replace(/^\uFEFF/, "").trim() === limpio) {
+        toast("No hay actualización");
+        agregarLog("Sin cambios: no se realizó ninguna acción");
         return;
       }
 
       files.write(rutaScript, nuevoCodigo);
-      toast("Actualización aplicada. Reiniciando...");
-      agregarLog("Actualización descargada y guardada. Reiniciando script...");
-      sleep(800);
+      toast("Actualizado. Reiniciando...");
+      agregarLog("Nueva versión descargada. Reiniciando...");
+      sleep(700);
       engines.execScriptFile(rutaScript);
       engines.myEngine().forceStop();
     } catch (e) {
-      toast("Error al actualizar: " + e.message);
-      agregarLog("Error al actualizar: " + e.message);
+      toast("No hay actualización");
+      agregarLog("Error al revisar actualización (sin cambios): " + e.message);
     }
   });
 }
@@ -195,7 +196,7 @@ function formatearSoloDetectado(nombre, nivel) {
   if (nivel && String(nivel).trim()) {
     partes.push("Lv. " + String(nivel).trim());
   }
-  return partes.length > 0 ? partes.join(" | ") : "Detectando personaje en juego...";
+  return partes.length > 0 ? partes.join(" | ") : "SRO Macro Flotante";
 }
 
 function actualizarDeteccionPantallaUI(nombre, nivel) {
@@ -234,7 +235,7 @@ function actualizarInfoItemDetalladaUI(nombreItem, plusActual, cantidad) {
     }
     if (floatWin && floatWin.tv_mini_info) {
       try {
-        floatWin.tv_mini_info.setText(limpioNombre + " [" + limpioPlus + "] x" + qtyNum);
+        floatWin.tv_mini_info.setText(limpioNombre + " [" + limpioPlus + "]");
       } catch (e) {}
     }
   });
@@ -257,19 +258,13 @@ function autoDetectarCantidadesEnPantalla(cfg) {
     var hitElixir = buscarEnCaptura(screen, cfg, candidatosElixir);
     if (hitElixir) {
       agregarLog("Elixir detectado (" + hitElixir.name + ".png) en (" + hitElixir.x + "," + hitElixir.y + ")");
-    } else {
-      agregarLog("Elixir no detectado con plantillas: " + candidatosElixir.join(", "));
     }
 
     var hitLucky = buscarEnCaptura(screen, cfg, candidatosLucky);
     if (hitLucky) {
       agregarLog("Lucky detectado (" + hitLucky.name + ".png) en (" + hitLucky.x + "," + hitLucky.y + ")");
-    } else {
-      agregarLog("Lucky no detectado con plantillas: " + candidatosLucky.join(", "));
     }
-  } catch (e) {
-    agregarLog("Error detectando elixir/lucky: " + e.message);
-  }
+  } catch (e) {}
 
   actualizarContadoresUI(elixirDetectado, luckyDetectado);
   return { elixir: elixirDetectado, lucky: luckyDetectado };
@@ -334,26 +329,17 @@ function leerSoloLoVistoEnPantalla(cfg) {
     var vioLvImg = screen ? (buscarEnCaptura(screen, cfg, ["lv"]) != null) : false;
     var vioNombreImg = screen ? (buscarEnCaptura(screen, cfg, ["nombre"]) != null) : false;
 
-    if (vioLvImg) {
-      nivelVisto = "Lv";
-    }
-    if (vioNombreImg) {
-      nombreVisto = "Detectado";
-    }
+    if (vioLvImg) nivelVisto = "Lv";
+    if (vioNombreImg) nombreVisto = "Detectado";
   } catch (e) {}
 
-  return {
-    personaje: nombreVisto,
-    nivel: nivelVisto
-  };
+  return { personaje: nombreVisto, nivel: nivelVisto };
 }
 
 function esperarCuentaEnJuego(cfg) {
-  setEstado("Verificando pantalla en juego...");
   var visto = leerSoloLoVistoEnPantalla(cfg);
   if (visto.personaje || visto.nivel) {
     actualizarDeteccionPantallaUI(visto.personaje, visto.nivel);
-    agregarLog("Visto en pantalla -> " + formatearSoloDetectado(visto.personaje, visto.nivel));
   }
   return true;
 }
@@ -366,11 +352,6 @@ function actualizarContadorYAutoActivar() {
   ui.run(function () {
     if (vistaActual === "eventos" && ui.tv_ev_countdown) {
       ui.tv_ev_countdown.setText(texto);
-    }
-    if (floatWin && running) {
-      try {
-        floatWin.tv_mini_info.setText("Guild Boss | " + formatearContador(segs));
-      } catch (e) {}
     }
   });
 
@@ -427,17 +408,13 @@ function abrirAjusteAccesibilidad() {
   toast("Activa Accesibilidad para AutoJs6");
   try {
     app.startActivity({ action: "android.settings.ACCESSIBILITY_SETTINGS" });
-  } catch (e) {
-    log("Error accesibilidad: " + e.message);
-  }
+  } catch (e) {}
 }
 
 function abrirAjusteSuperposicion() {
   try {
     floaty.requestPermission();
-  } catch (e) {
-    log("Error superposición: " + e.message);
-  }
+  } catch (e) {}
 }
 
 function refrescarEstadoPermisos() {
@@ -451,7 +428,6 @@ function refrescarEstadoPermisos() {
   return acc && ovl;
 }
 
-// Envía directo a configuración si falta Accesibilidad, pide flotante sin frenar y activa captura
 function prepararEntornoYPermisos(cfg) {
   try {
     files.createWithDirs(cfg.dir);
@@ -470,7 +446,9 @@ function prepararEntornoYPermisos(cfg) {
 
   if (!tieneSuperposicion()) {
     ui.run(function () { abrirAjusteSuperposicion(); });
-    sleep(800);
+    for (var s = 0; s < 16 && !tieneSuperposicion() && running; s++) {
+      sleep(500);
+    }
   }
 
   if (!capturaLista) {
@@ -496,7 +474,7 @@ function setEstado(texto) {
   ui.run(function () {
     if (ui.tv_status) ui.tv_status.setText("Estado: " + texto);
     if (ui.tv_ev_status) ui.tv_ev_status.setText("Estado: " + texto);
-    if (floatWin) {
+    if (floatWin && floatWin.tv_mini_status) {
       try {
         floatWin.tv_mini_status.setText(texto);
       } catch (e) {}
@@ -569,7 +547,7 @@ function cargarUIAlchemy() {
   ui.cb_use_lucky.setChecked(Boolean(prefs.get("useLucky", true)));
   ui.cb_use_confirm.setChecked(Boolean(prefs.get("useConfirm", false)));
 
-  ui.et_threshold.setText(String(prefs.get("threshold", 0.70)));
+  ui.et_threshold.setText(String(prefs.get("threshold", 0.65)));
   ui.et_max_tries.setText(String(prefs.get("maxTries", 300)));
   ui.et_delay_tap.setText(String(prefs.get("delayTap", 550)));
   ui.et_delay_res.setText(String(prefs.get("delayRes", 2600)));
@@ -592,7 +570,7 @@ function leerConfigAlchemy() {
   var luckyDegTexto = LUCKY_DEGREES[luckyDegIdx] || "1th";
 
   var th = parseFloat(ui.et_threshold.text());
-  if (isNaN(th) || th < 0.40 || th > 0.99) th = 0.70;
+  if (isNaN(th) || th < 0.35 || th > 0.99) th = 0.65;
 
   var cfg = {
     modo: "Alchemy",
@@ -636,26 +614,20 @@ function leerConfigAlchemy() {
   return cfg;
 }
 
-function leerConfigEventos() {
-  var evHora = normalizarHoraHHMM(ui.et_ev_hora ? ui.et_ev_hora.text() : prefs.get("evHora", "20:00"));
-  if (ui.et_ev_hora) ui.et_ev_hora.setText(evHora);
-  prefs.put("evName", "Guild Boss");
-  prefs.put("evHora", evHora);
-
-  var th = parseFloat(prefs.get("threshold", 0.70));
-  if (isNaN(th) || th < 0.40 || th > 0.99) th = 0.70;
-
+function leerConfigDesdePrefs() {
   var plusIdx = prefs.get("plusIdx", 5);
   var plusTexto = PLUS_OPCIONES[plusIdx] || "+6";
   var elixirIdx = prefs.get("elixirIdx", 0);
   var elixirObj = ELIXIR_OPCIONES[elixirIdx] || ELIXIR_OPCIONES[0];
   var luckyDegIdx = prefs.get("luckyDegIdx", 0);
+  var th = parseFloat(prefs.get("threshold", 0.65));
+  if (isNaN(th) || th < 0.35 || th > 0.99) th = 0.65;
 
   return {
-    modo: "Eventos",
+    modo: "Alchemy",
     itemName: String(prefs.get("itemName", "") || "").trim() || statsSesion.itemDetectado || "Item",
     evName: "Guild Boss",
-    evHora: evHora,
+    evHora: normalizarHoraHHMM(prefs.get("evHora", "20:00")),
     evCycles: 3,
     evWait: 1200,
     plusIdx: plusIdx,
@@ -672,10 +644,85 @@ function leerConfigEventos() {
     useConfirm: Boolean(prefs.get("useConfirm", false)),
     threshold: th,
     maxTries: Math.max(1, parseInt(prefs.get("maxTries", 300), 10) || 300),
-    delayTap: Math.max(150, parseInt(ui.et_delay_tap ? ui.et_delay_tap.text() : prefs.get("delayTap", 550), 10) || 550),
-    delayRes: Math.max(500, parseInt(ui.et_delay_res ? ui.et_delay_res.text() : prefs.get("delayRes", 2600), 10) || 2600),
+    delayTap: Math.max(150, parseInt(prefs.get("delayTap", 550), 10) || 550),
+    delayRes: Math.max(500, parseInt(prefs.get("delayRes", 2600), 10) || 2600),
     dir: "/sdcard/SilkroadMacro/"
   };
+}
+
+function leerConfigEventos() {
+  var base = leerConfigDesdePrefs();
+  var evHora = normalizarHoraHHMM(ui.et_ev_hora ? ui.et_ev_hora.text() : base.evHora);
+  if (ui.et_ev_hora) ui.et_ev_hora.setText(evHora);
+  prefs.put("evName", "Guild Boss");
+  prefs.put("evHora", evHora);
+  base.modo = "Eventos";
+  base.evHora = evHora;
+  return base;
+}
+
+function tocarFuseEnJuegoDirecto() {
+  var cfg = (vistaActual === "alchemy" && ui.et_threshold) ? leerConfigAlchemy() : leerConfigDesdePrefs();
+  cfg.modo = "Alchemy";
+  threads.start(function () {
+    try {
+      if (!prepararEntornoYPermisos(cfg)) return;
+      var prevRunning = running;
+      var prevActiva = alchemyActiva;
+      var prevPaused = paused;
+      running = true;
+      alchemyActiva = true;
+      paused = false;
+
+      var ok = detectarYTocar(cfg, ["Fuse", "fuse"], "Fuse.png", cfg.delayTap);
+
+      running = prevRunning;
+      alchemyActiva = prevActiva;
+      paused = prevPaused;
+
+      if (ok) {
+        agregarLog("FUSE: tocado dentro del juego");
+        toast("Fuse ejecutado");
+      } else {
+        agregarLog("FUSE: no se encontró Fuse.png en " + cfg.dir);
+        toast("No se encontró Fuse.png en pantalla");
+      }
+    } catch (err) {
+      agregarLog("Error al buscar Fuse en juego: " + err.message);
+    }
+  });
+}
+
+function iniciarProcesoAlchemy() {
+  var cfg = (vistaActual === "alchemy" && ui.et_item_name) ? leerConfigAlchemy() : leerConfigDesdePrefs();
+  cfg.modo = "Alchemy";
+  running = true;
+  alchemyActiva = true;
+  paused = false;
+
+  if (workerThread && workerThread.isAlive()) {
+    try { workerThread.interrupt(); } catch (e) {}
+  }
+
+  workerThread = threads.start(function () {
+    try {
+      reiniciarStats("Alchemy");
+      if (!prepararEntornoYPermisos(cfg)) return;
+
+      mostrarFlotante(
+        cfg.itemName + " [" + cfg.plusTexto + "]",
+        formatearSoloDetectado(statsSesion.personaje, statsSesion.nivel)
+      );
+
+      var abierto = abrirMenuYTocarAlchemy(cfg);
+      agregarLog("Menú -> Alchemy: " + (abierto ? "OK" : "Sin match de imagen"));
+
+      autoDetectarCantidadesEnPantalla(cfg);
+      ejecutarAlchemy(cfg);
+    } catch (err) {
+      detenerMacro("Error: " + err.message);
+    }
+  });
 }
 
 function mostrarVistaAlchemy() {
@@ -684,12 +731,13 @@ function mostrarVistaAlchemy() {
     <vertical padding="12" bg="#0A0C14">
       <horizontal gravity="center_vertical" marginBottom="6">
         <text text={"v" + VERSION_ACTUAL} textSize="11sp" textColor="#9CA3AF" layout_weight="1" />
+        <button id="btn_float_open" text="FLOTANTE" textSize="10sp" bg="#7C3AED" textColor="#FFFFFF" h="32" padding="4" marginRight="4" />
         <button id="btn_update" text="ACTUALIZACIÓN" textSize="10sp" bg="#2563EB" textColor="#FFFFFF" h="32" padding="4" />
       </horizontal>
 
       <card cardCornerRadius="8dp" cardBackgroundColor="#1E1B18" strokeWidth="1dp" strokeColor="#D97706" marginBottom="8">
         <vertical padding="8">
-          <text id="tv_char_info" text="Detectando personaje en juego..." textSize="12sp" textColor="#10B981" textStyle="bold" />
+          <text id="tv_char_info" text="SRO Macro Flotante" textSize="12sp" textColor="#10B981" textStyle="bold" />
           <text id="tv_top_item" text="Ítem: Item | Estado: +0 | Detec: 0" textSize="12sp" textColor="#FBBF24" textStyle="bold" marginTop="2" />
         </vertical>
       </card>
@@ -760,7 +808,7 @@ function mostrarVistaAlchemy() {
 
               <horizontal marginBottom="8">
                 <vertical layout_weight="1" marginRight="4">
-                  <text text="Precisión (0.40-0.95)" textSize="11sp" textColor="#9CA3AF" />
+                  <text text="Precisión (0.35-0.95)" textSize="11sp" textColor="#9CA3AF" />
                   <input id="et_threshold" inputType="numberDecimal" textColor="#FFFFFF" bg="#1F2937" padding="6" />
                 </vertical>
                 <vertical layout_weight="1" marginLeft="4">
@@ -797,6 +845,17 @@ function mostrarVistaAlchemy() {
   ui.setContentView(viewAlchemy);
   cargarUIAlchemy();
   refrescarEstadoPermisos();
+
+  ui.btn_float_open.click(function () {
+    var cfg = leerConfigAlchemy();
+    if (!tieneSuperposicion()) {
+      abrirAjusteSuperposicion();
+      toast("Activa mostrar sobre otras apps y vuelve a tocar FLOTANTE");
+      return;
+    }
+    mostrarFlotante(cfg.itemName + " [" + cfg.plusTexto + "]", "Listo sobre juego");
+    toast("Panel flotante activado");
+  });
 
   ui.btn_update.click(function () { comprobarYActualizarScript(); });
 
@@ -841,68 +900,11 @@ function mostrarVistaAlchemy() {
   });
 
   ui.btn_fuse.click(function () {
-    var cfg = leerConfigAlchemy();
-    cfg.modo = "Alchemy";
-    threads.start(function () {
-      try {
-        if (!prepararEntornoYPermisos(cfg)) return;
-        var prevRunning = running;
-        var prevActiva = alchemyActiva;
-        var prevPaused = paused;
-        running = true;
-        alchemyActiva = true;
-        paused = false;
-
-        var ok = detectarYTocar(cfg, ["Fuse", "fuse"], "Fuse.png", cfg.delayTap);
-
-        running = prevRunning;
-        alchemyActiva = prevActiva;
-        paused = prevPaused;
-
-        if (ok) {
-          agregarLog("FUSE: tocado dentro del juego");
-          toast("Fuse ejecutado");
-        } else {
-          agregarLog("FUSE: no se encontró Fuse.png en " + cfg.dir);
-          toast("No se encontró Fuse.png en pantalla");
-        }
-      } catch (err) {
-        agregarLog("Error al buscar Fuse en juego: " + err.message);
-      }
-    });
+    tocarFuseEnJuegoDirecto();
   });
 
   ui.btn_start.click(function () {
-    var cfg = leerConfigAlchemy();
-    cfg.modo = "Alchemy";
-    running = true;
-    alchemyActiva = true;
-    paused = false;
-
-    if (workerThread && workerThread.isAlive()) {
-      try { workerThread.interrupt(); } catch (e) {}
-    }
-
-    workerThread = threads.start(function () {
-      try {
-        reiniciarStats("Alchemy");
-        if (!prepararEntornoYPermisos(cfg)) return;
-
-        esperarCuentaEnJuego(cfg);
-        mostrarFlotante(
-          "Abriendo menú -> Alchemy",
-          formatearSoloDetectado(statsSesion.personaje, statsSesion.nivel)
-        );
-
-        var abierto = abrirMenuYTocarAlchemy(cfg);
-        agregarLog("Resultado abrir menú -> Alchemy: " + (abierto ? "OK" : "Sin match de imagen"));
-
-        autoDetectarCantidadesEnPantalla(cfg);
-        ejecutarAlchemy(cfg);
-      } catch (err) {
-        detenerMacro("Error: " + err.message);
-      }
-    });
+    iniciarProcesoAlchemy();
   });
 
   ui.btn_stop.click(function () {
@@ -922,7 +924,7 @@ function mostrarVistaEventos() {
       </horizontal>
 
       <text text="EVENTOS DE GUILD Y AUTO-JOIN" textSize="18sp" textColor="#F59E0B" textStyle="bold" marginBottom="4" />
-      <text id="tv_ev_char_info" text="Detectando personaje en juego..." textSize="12sp" textColor="#10B981" textStyle="bold" marginBottom="8" />
+      <text id="tv_ev_char_info" text="SRO Macro Flotante" textSize="12sp" textColor="#10B981" textStyle="bold" marginBottom="8" />
 
       <card cardCornerRadius="8dp" cardBackgroundColor="#1E1B18" strokeWidth="1dp" strokeColor="#D97706" marginBottom="10">
         <horizontal padding="8" gravity="center_vertical">
@@ -994,44 +996,75 @@ function cerrarFlotante() {
     try { floatWin.close(); } catch (e) {}
     floatWin = null;
   }
-  if (miniIconWin) {
-    try { miniIconWin.close(); } catch (e) {}
-    miniIconWin = null;
-  }
 }
 
 function mostrarFlotante(resumen, fichaPj) {
   cerrarFlotante();
   if (!tieneSuperposicion()) return;
+
   try {
     floatWin = floaty.rawWindow(
-      <frame bg="#EE0A0C14" padding="6">
-        <vertical>
-          <text id="tv_mini_char" text={fichaPj || "Detectando personaje en juego..."} textSize="10sp" textColor="#10B981" textStyle="bold" />
-          <text id="tv_mini_info" text={resumen} textSize="10sp" textColor="#F59E0B" marginBottom="2" />
-          <text id="tv_mini_status" text={paused ? "En pausa" : "Macro activo"} textSize="10sp" textColor="#F8FAFC" marginBottom="4" />
+      <card cardCornerRadius="10dp" cardBackgroundColor="#EE0A0C14" strokeWidth="1dp" strokeColor="#F59E0B">
+        <vertical padding="6">
+          <text id="tv_drag_bar" text={"⋮⋮ " + (fichaPj || "SRO Flotante")} textSize="10sp" textColor="#10B981" textStyle="bold" />
+          <text id="tv_mini_info" text={resumen || "Alchemy"} textSize="10sp" textColor="#FBBF24" />
+          <text id="tv_mini_status" text={running ? (paused ? "En pausa" : "Activo") : "Encima del juego"} textSize="10sp" textColor="#F8FAFC" marginBottom="4" />
           <horizontal>
-            <button id="btn_float_toggle" text={paused ? "Inicio" : "Pausa"} textSize="10sp" bg="#D97706" textColor="#FFFFFF" w="60" h="32" marginRight="4" />
-            <button id="btn_float_stop" text="Stop" textSize="10sp" bg="#DC2626" textColor="#FFFFFF" w="50" h="32" />
+            <button id="btn_f_fuse" text="FUSE" textSize="9sp" bg="#2563EB" textColor="#FFFFFF" textStyle="bold" w="48" h="30" padding="2" marginRight="3" />
+            <button id="btn_f_run" text={running ? (paused ? "GO" : "PAU") : "RUN"} textSize="9sp" bg="#059669" textColor="#FFFFFF" textStyle="bold" w="46" h="30" padding="2" marginRight="3" />
+            <button id="btn_f_stop" text="STOP" textSize="9sp" bg="#DC2626" textColor="#FFFFFF" textStyle="bold" w="46" h="30" padding="2" marginRight="3" />
+            <button id="btn_f_close" text="X" textSize="9sp" bg="#374151" textColor="#FFFFFF" w="28" h="30" padding="2" />
           </horizontal>
         </vertical>
-      </frame>
+      </card>
     );
-    floatWin.setPosition(40, 120);
 
-    floatWin.btn_float_toggle.click(function () {
-      if (!running) return;
-      paused = !paused;
-      ui.run(function () {
-        if (floatWin) floatWin.btn_float_toggle.setText(paused ? "Inicio" : "Pausa");
-      });
-      var estadoPausa = paused ? "En pausa" : "Reanudado";
-      setEstado(estadoPausa);
-      agregarLog(estadoPausa);
+    floatWin.setPosition(24, 140);
+
+    var startX = 0, startY = 0, winX = 0, winY = 0;
+    floatWin.tv_drag_bar.setOnTouchListener(function (view, event) {
+      var action = event.getAction();
+      if (action === android.view.MotionEvent.ACTION_DOWN) {
+        startX = event.getRawX();
+        startY = event.getRawY();
+        winX = floatWin.getX();
+        winY = floatWin.getY();
+        return true;
+      } else if (action === android.view.MotionEvent.ACTION_MOVE) {
+        var nx = Math.round(winX + (event.getRawX() - startX));
+        var ny = Math.round(winY + (event.getRawY() - startY));
+        floatWin.setPosition(nx, ny);
+        return true;
+      }
+      return false;
     });
 
-    floatWin.btn_float_stop.click(function () {
+    floatWin.btn_f_fuse.click(function () {
+      tocarFuseEnJuegoDirecto();
+    });
+
+    floatWin.btn_f_run.click(function () {
+      if (!running) {
+        iniciarProcesoAlchemy();
+        ui.run(function () {
+          if (floatWin) floatWin.btn_f_run.setText("PAU");
+        });
+      } else {
+        paused = !paused;
+        ui.run(function () {
+          if (floatWin) floatWin.btn_f_run.setText(paused ? "GO" : "PAU");
+        });
+        setEstado(paused ? "En pausa" : "Reanudado");
+      }
+    });
+
+    floatWin.btn_f_stop.click(function () {
       detenerMacro("Detenido desde flotante");
+      if (workerThread && workerThread.isAlive()) workerThread.interrupt();
+    });
+
+    floatWin.btn_f_close.click(function () {
+      cerrarFlotante();
     });
   } catch (e) {
     agregarLog("Aviso flotante: " + e.message);
