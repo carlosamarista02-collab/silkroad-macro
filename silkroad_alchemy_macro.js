@@ -2,7 +2,7 @@
 
 var URL_ACTUALIZACION = "https://raw.githubusercontent.com/carlosamarista02-collab/silkroad-macro/main/silkroad_alchemy_macro.js";
 var URL_BASE_IMAGENES = "https://raw.githubusercontent.com/carlosamarista02-collab/silkroad-macro/main/";
-var VERSION_ACTUAL = "1.3.6";
+var VERSION_ACTUAL = "1.3.7";
 
 var PLANTILLAS_REPO = [
   "pergamino.png",
@@ -1049,7 +1049,48 @@ function abrirJobSroPrueba() {
 
   try {
     var pm = context.getPackageManager();
-    var pkgs = pm.getInstalledPackages(0);
+    var mainIntent = new android.content.Intent(android.content.Intent.ACTION_MAIN, null);
+    mainIntent.addCategory(android.content.Intent.CATEGORY_LAUNCHER);
+    var actividades = pm.queryIntentActivities(mainIntent, 0);
+
+    for (var a = 0; a < actividades.size(); a++) {
+      var act = actividades.get(a);
+      var pkgAct = String(act.activityInfo.packageName || "");
+      if (
+        pkgAct === miPaquete ||
+        pkgAct.indexOf("autojs") !== -1 ||
+        pkgAct.indexOf("silkroad_alchemy_macro") !== -1
+      ) {
+        continue;
+      }
+
+      var labelAct = String(act.loadLabel(pm) || "");
+      var comboAct = (labelAct + " " + pkgAct).toLowerCase();
+
+      for (var pIdx = 0; pIdx < pistas.length; pIdx++) {
+        if (comboAct.indexOf(pistas[pIdx]) !== -1) {
+          var intentAct = pm.getLaunchIntentForPackage(pkgAct);
+          if (intentAct) {
+            intentAct.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK);
+            context.startActivity(intentAct);
+          } else {
+            app.launch(pkgAct);
+          }
+          var msgAct = "Abriendo " + labelAct + " (" + pkgAct + ")";
+          agregarLog(msgAct);
+          setEstado(msgAct);
+          toast(msgAct);
+          return true;
+        }
+      }
+    }
+  } catch (errAct) {
+    agregarLog("Error consultando lanzadores: " + errAct.message);
+  }
+
+  try {
+    var pm2 = context.getPackageManager();
+    var pkgs = pm2.getInstalledPackages(0);
     for (var j = 0; j < pkgs.size(); j++) {
       var p = pkgs.get(j);
       var pkgName = String(p.packageName || "");
@@ -1062,12 +1103,12 @@ function abrirJobSroPrueba() {
         continue;
       }
 
-      var label = String(p.applicationInfo.loadLabel(pm) || "");
+      var label = String(p.applicationInfo.loadLabel(pm2) || "");
       var combo = (label + " " + pkgName).toLowerCase();
 
       for (var k = 0; k < pistas.length; k++) {
         if (combo.indexOf(pistas[k]) !== -1) {
-          var intent = pm.getLaunchIntentForPackage(pkgName);
+          var intent = pm2.getLaunchIntentForPackage(pkgName);
           if (intent) {
             intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK);
             context.startActivity(intent);
@@ -1086,9 +1127,9 @@ function abrirJobSroPrueba() {
     agregarLog("Error buscando paquete JOB SRO: " + err.message);
   }
 
-  var msgNo = "No se encontró JOB SRO. Ábrela manualmente y usa el FLOTANTE.";
+  var msgNo = "JOB SRO no hallada desde el macro. Ábrela o entra a DualSpace y usa FLOTANTE.";
   agregarLog(msgNo);
-  setEstado("JOB SRO no encontrada");
+  setEstado("JOB SRO no hallada. Ábrela y usa FLOTANTE.");
   toast(msgNo);
   return false;
 }
