@@ -1,7 +1,7 @@
 "ui";
 
 var URL_ACTUALIZACION = "https://raw.githubusercontent.com/carlosamarista02-collab/silkroad-macro/main/main.js";
-var VERSION_ACTUAL = "1.2.1";
+var VERSION_ACTUAL = "1.3.0";
 
 try {
   activity.resizeTask && activity.resizeTask(700, 1100);
@@ -39,6 +39,18 @@ var LUCKY_DEGREES = [
 
 var colaItensDetec = [];
 var indiceItemActual = 0;
+var ultimoEscaneoPantalla = {
+  menuHit: null,
+  elixiresPorTipo: {
+    weapon: 0,
+    shield: 0,
+    protector: 0,
+    accessory: 0,
+    special: 0
+  },
+  luckyTotal: 0,
+  plantillasEncontradas: []
+};
 
 var logsHistorial = [];
 var statsSesion = {
@@ -241,31 +253,144 @@ function actualizarInfoItemDetalladaUI(nombreItem, plusActual, cantidad) {
   });
 }
 
-function autoDetectarCantidadesEnPantalla(cfg) {
-  var elixirDetectado = cfg.elixirQty || 0;
-  var luckyDetectado = cfg.luckyQty || 0;
+function obtenerCandidatosMenuPergamino() {
+  return ["pergamino", "scroll", "menu", "Menu", "btn_menu"];
+}
+
+function obtenerCandidatosElixir(elixirKey) {
+  if (elixirKey === "accessory") return ["elixir_acceaorio", "elixir_accessory"];
+  return ["elixir_" + elixirKey];
+}
+
+function obtenerCandidatosLucky(luckyDegree) {
+  return ["Lucky_Power_" + luckyDegree, "lucky_" + luckyDegree];
+}
+
+function localizarArchivoPlantilla(dir, nombreBase) {
+  var png = dir + nombreBase + ".png";
+  if (files.exists(png)) return png;
+  var jpg = dir + nombreBase + ".jpg";
+  if (files.exists(jpg)) return jpg;
+  return null;
+}
+
+// Escanea toda la pantalla buscando plantillas y contando elixires y lucky
+function escanearPantallaCompleta(cfg) {
+  var resultado = {
+    menuHit: null,
+    elixiresPorTipo: {
+      weapon: 0,
+      shield: 0,
+      protector: 0,
+      accessory: 0,
+      special: 0
+    },
+    luckyTotal: 0,
+    plantillasEncontradas: []
+  };
 
   try {
     var screen = captureScreen();
     if (!screen) {
-      actualizarContadoresUI(elixirDetectado, luckyDetectado);
-      return { elixir: elixirDetectado, lucky: luckyDetectado };
+      agregarLog("Escaneo total: no se pudo obtener captura de pantalla");
+      return resultado;
     }
 
-    var candidatosElixir = obtenerCandidatosElixir(cfg.elixirKey);
-    var candidatosLucky = obtenerCandidatosLucky(cfg.luckyDegree);
+    var umbralEscaneo = Math.max(0.40, Math.min(cfg.threshold, 0.62));
 
-    var hitElixir = buscarEnCaptura(screen, cfg, candidatosElixir);
-    if (hitElixir) {
-      agregarLog("Elixir detectado (" + hitElixir.name + ".png) en (" + hitElixir.x + "," + hitElixir.y + ")");
+    var menuCandidatos = obtenerCandidatosMenuPergamino();
+    for (var m = 0; m < menuCandidatos.length; m++) {
+      var rutaMenu = localizarArchivoPlantilla(cfg.dir, menuCandidatos[m]);
+      if (!rutaMenu) continue;
+      var tplMenu = images.read(rutaMenu);
+      if (!tplMenu) continue;
+      var hitMenu = buscarImagenEscalada(screen, tplMenu, umbralEscaneo);
+      tplMenu.recycle();
+      if (hitMenu) {
+        resultado.menuHit = { x: hitMenu.x, y: hitMenu.y, name: menuCandidatos[m] };
+        resultado.plantillasEncontradas.push(menuCandidatos[m] + "(" + hitMenu.x + "," + hitMenu.y + ")");
+        break;
+      }
     }
 
-    var hitLucky = buscarEnCaptura(screen, cfg, candidatosLucky);
-    if (hitLucky) {
-      agregarLog("Lucky detectado (" + hitLucky.name + ".png) en (" + hitLucky.x + "," + hitLucky.y + ")");
-    }
-  } catch (e) {}
+    for (var eIdx = 0; eIdx < ELIXIR_OPCIONES.length; eIdx++) {
+      var tipoElixir = ELIXIR_OPCIONES[eIdx];
+      var candsElixir = obtenerCandidatosElixir(tipoElixir.key);
+      var cuentaTipo = 0;
 
+      for (var c = 0; c < candsElixir.length; c++) {
+        var rutaElixir = localizarArchivoPlantilla(cfg.dir, candsElixir[c]);
+        if (!rutaElixir) continue;
+        var ptsElixir = encontrarPuntosPlantilla(screen, rutaElixir, umbralEscaneo);
+        if (ptsElixir.length > 0) {
+          cuentaTipo += ptsElixir.length;
+          resultado.plantillasEncontradas.push(candsElixir[c] + " x" + ptsElixir.length);
+        }
+      }
+      resultado.elixiresPorTipo[tipoElixir.key] = cuentaTipo;
+    }
+
+    var candsLucky = obtenerCandidatosLucky(cfg.luckyDegree);
+    for (var l = 0; l < candsLucky.length; l++) {
+      var rutaLucky = localizarArchivoPlantilla(cfg.dir, candsLucky[l]);
+      if (!rutaLucky) continue;
+      var ptsLucky = encontrarPuntosPlantilla(screen, rutaLucky, umbralEscaneo);
+      if (ptsLucky.length > 0) {
+        resultado.luckyTotal += ptsLucky.length;
+        resultado.plantillasEncontradas.push(candsLucky[l] + " x" + ptsLucky.length);
+      }
+    }
+
+    var extras = ["alchemy", "Alchemy", "Fuse", "fuse"];
+    for (var ex = 0; ex < extras.length; ex++) {
+      var rutaEx = localizarArchivoPlantilla(cfg.dir, extras[ex]);
+      if (!rutaEx) continue;
+      var tplEx = images.read(rutaEx);
+      if (!tplEx) continue;
+      var hitEx = buscarImagenEscalada(screen, tplEx, umbralEscaneo);
+      tplEx.recycle();
+      if (hitEx) {
+        resultado.plantillasEncontradas.push(extras[ex] + "(" + hitEx.x + "," + hitEx.y + ")");
+      }
+    }
+
+    ultimoEscaneoPantalla = resultado;
+
+    var elixirSeleccionadoCant = resultado.elixiresPorTipo[cfg.elixirKey] || 0;
+    var finalElixir = elixirSeleccionadoCant > 0 ? elixirSeleccionadoCant : cfg.elixirQty;
+    var finalLucky = resultado.luckyTotal > 0 ? resultado.luckyTotal : cfg.luckyQty;
+
+    actualizarContadoresUI(finalElixir, finalLucky);
+
+    var resumenElixires =
+      "W:" + resultado.elixiresPorTipo.weapon +
+      " S:" + resultado.elixiresPorTipo.shield +
+      " P:" + resultado.elixiresPorTipo.protector +
+      " A:" + resultado.elixiresPorTipo.accessory +
+      " Sp:" + resultado.elixiresPorTipo.special;
+
+    agregarLog(
+      "Escaneo pantalla -> Menú/Pergamino: " +
+      (resultado.menuHit ? resultado.menuHit.name + ".png @ (" + resultado.menuHit.x + "," + resultado.menuHit.y + ")" : "No detectado") +
+      " | Elixires [" + resumenElixires + "] | Lucky: " + resultado.luckyTotal
+    );
+
+    if (resultado.plantillasEncontradas.length > 0) {
+      agregarLog("Imágenes identificadas: " + resultado.plantillasEncontradas.join(", "));
+    } else {
+      agregarLog("Ninguna plantilla de " + cfg.dir + " coincidió en esta captura");
+    }
+  } catch (err) {
+    agregarLog("Error en escaneo total: " + err.message);
+  }
+
+  return resultado;
+}
+
+function autoDetectarCantidadesEnPantalla(cfg) {
+  var escaneo = escanearPantallaCompleta(cfg);
+  var elixirDetectado = escaneo.elixiresPorTipo[cfg.elixirKey] || cfg.elixirQty || 0;
+  var luckyDetectado = escaneo.luckyTotal || cfg.luckyQty || 0;
   actualizarContadoresUI(elixirDetectado, luckyDetectado);
   return { elixir: elixirDetectado, lucky: luckyDetectado };
 }
@@ -494,7 +619,14 @@ function actualizarContadoresUI(elixirRest, luckyRest) {
 }
 
 function mostrarVentanaLog() {
+  var elx = ultimoEscaneoPantalla.elixiresPorTipo;
+  var resumenEscaneo =
+    "Escaneo -> Pergamino/Menú: " +
+    (ultimoEscaneoPantalla.menuHit ? ultimoEscaneoPantalla.menuHit.name + ".png" : "No") +
+    " | Elixires [W:" + elx.weapon + " S:" + elx.shield + " P:" + elx.protector + " A:" + elx.accessory + " Sp:" + elx.special + "]";
+
   var resumenStats =
+    resumenEscaneo + "\n" +
     "Pantalla: " + formatearSoloDetectado(statsSesion.personaje, statsSesion.nivel) + "\n" +
     statsSesion.descripcionItem + " | Detec: " + statsSesion.cantidadMismoItem + "\n" +
     "Modo: " + statsSesion.modo + " | Intentos: " + statsSesion.intentos + " | Fallos: " + statsSesion.fallos + "\n" +
@@ -547,7 +679,7 @@ function cargarUIAlchemy() {
   ui.cb_use_lucky.setChecked(Boolean(prefs.get("useLucky", true)));
   ui.cb_use_confirm.setChecked(Boolean(prefs.get("useConfirm", false)));
 
-  ui.et_threshold.setText(String(prefs.get("threshold", 0.65)));
+  ui.et_threshold.setText(String(prefs.get("threshold", 0.58)));
   ui.et_max_tries.setText(String(prefs.get("maxTries", 300)));
   ui.et_delay_tap.setText(String(prefs.get("delayTap", 550)));
   ui.et_delay_res.setText(String(prefs.get("delayRes", 2600)));
@@ -570,7 +702,7 @@ function leerConfigAlchemy() {
   var luckyDegTexto = LUCKY_DEGREES[luckyDegIdx] || "1th";
 
   var th = parseFloat(ui.et_threshold.text());
-  if (isNaN(th) || th < 0.35 || th > 0.99) th = 0.65;
+  if (isNaN(th) || th < 0.35 || th > 0.99) th = 0.58;
 
   var cfg = {
     modo: "Alchemy",
@@ -620,8 +752,8 @@ function leerConfigDesdePrefs() {
   var elixirIdx = prefs.get("elixirIdx", 0);
   var elixirObj = ELIXIR_OPCIONES[elixirIdx] || ELIXIR_OPCIONES[0];
   var luckyDegIdx = prefs.get("luckyDegIdx", 0);
-  var th = parseFloat(prefs.get("threshold", 0.65));
-  if (isNaN(th) || th < 0.35 || th > 0.99) th = 0.65;
+  var th = parseFloat(prefs.get("threshold", 0.58));
+  if (isNaN(th) || th < 0.35 || th > 0.99) th = 0.58;
 
   return {
     modo: "Alchemy",
@@ -714,7 +846,16 @@ function iniciarProcesoAlchemy() {
         formatearSoloDetectado(statsSesion.personaje, statsSesion.nivel)
       );
 
-      var abierto = abrirMenuYTocarAlchemy(cfg);
+      var escaneoPrevio = escanearPantallaCompleta(cfg);
+      var abierto = false;
+      if (escaneoPrevio.menuHit) {
+        tapPunto(escaneoPrevio.menuHit.x, escaneoPrevio.menuHit.y, cfg.delayTap);
+        agregarLog("Pergamino/Menú tocado (" + escaneoPrevio.menuHit.name + ".png), esperando opciones...");
+        sleep(800);
+        abierto = detectarYTocar(cfg, ["alchemy", "Alchemy", "btn_alchemy"], "alchemy.png", cfg.delayTap);
+      } else {
+        abierto = abrirMenuYTocarAlchemy(cfg);
+      }
       agregarLog("Menú -> Alchemy: " + (abierto ? "OK" : "Sin match de imagen"));
 
       autoDetectarCantidadesEnPantalla(cfg);
@@ -797,7 +938,7 @@ function mostrarVistaAlchemy() {
                 <text text="Itens detec (mismo ícono/nombre)" textSize="13sp" textColor="#F59E0B" textStyle="bold" layout_weight="1" />
                 <button id="btn_scan_itens" text="Escanear" textSize="10sp" bg="#D97706" textColor="#FFFFFF" h="32" padding="4" />
               </horizontal>
-              <text text="Marca la casilla de cada ítem y elige su + objetivo. Al terminar o romperse, pasa al siguiente en orden." textSize="11sp" textColor="#9CA3AF" marginBottom="6" />
+              <text text="Escanea toda la pantalla: identifica pergamino/imágenes, cuenta elixires por tipo y arma la cola de ítems." textSize="11sp" textColor="#9CA3AF" marginBottom="6" />
               <vertical id="container_itens_detec" />
             </vertical>
           </card>
@@ -876,8 +1017,14 @@ function mostrarVistaAlchemy() {
     threads.start(function () {
       var cfg = leerConfigAlchemy();
       if (!prepararEntornoYPermisos(cfg)) return;
-      autoDetectarCantidadesEnPantalla(cfg);
-      escanearItensYConstruirCola(cfg, true);
+      var esc = escanearPantallaCompleta(cfg);
+      escanearItensYConstruirCola(cfg, false);
+      var elx = esc.elixiresPorTipo;
+      toast(
+        "Escaneo: " +
+        (esc.menuHit ? "Pergamino OK" : "Sin pergamino") +
+        " | W:" + elx.weapon + " S:" + elx.shield + " P:" + elx.protector + " A:" + elx.accessory + " Sp:" + elx.special
+      );
     });
   });
 
@@ -1111,7 +1258,7 @@ function buscarImagenEscalada(screen, tplBase, threshold) {
 
     var tplScaled = images.resize(tplBase, [nw, nh]);
     if (!tplScaled) continue;
-    var m2 = images.findImage(screen, tplScaled, { threshold: Math.max(0.42, threshold - 0.12) });
+    var m2 = images.findImage(screen, tplScaled, { threshold: Math.max(0.40, threshold - 0.12) });
     var res = m2 ? {
       x: m2.x + Math.floor(nw / 2),
       y: m2.y + Math.floor(nh / 2),
@@ -1131,12 +1278,8 @@ function buscarEnCaptura(screen, cfg, nombres) {
   if (!screen) return null;
   for (var i = 0; i < nombres.length; i++) {
     var nombre = nombres[i];
-    var ruta = cfg.dir + nombre + ".png";
-    if (!files.exists(ruta)) {
-      var rutaJpg = cfg.dir + nombre + ".jpg";
-      if (!files.exists(rutaJpg)) continue;
-      ruta = rutaJpg;
-    }
+    var ruta = localizarArchivoPlantilla(cfg.dir, nombre);
+    if (!ruta) continue;
     var tpl = images.read(ruta);
     if (!tpl) continue;
     var hit = buscarImagenEscalada(screen, tpl, cfg.threshold);
@@ -1154,7 +1297,7 @@ function encontrarPuntosPlantilla(screen, tplPath, threshold) {
 
   try {
     var matches = images.matchTemplate(screen, tpl, {
-      threshold: Math.max(0.50, threshold),
+      threshold: Math.max(0.45, threshold),
       level: 1
     });
     if (matches && matches.matches) {
@@ -1177,7 +1320,9 @@ function encontrarPuntosPlantilla(screen, tplPath, threshold) {
         }
       }
     }
-  } catch (e) {
+  } catch (e) {}
+
+  if (puntos.length === 0) {
     var single = buscarImagenEscalada(screen, tpl, threshold);
     if (single) puntos.push({ x: single.x, y: single.y });
   }
@@ -1215,9 +1360,7 @@ function capturarIconoRanuraAlchemy(cfg) {
 
 function detectarPlusActualEnPantalla(screen, cfg) {
   for (var n = 15; n >= 0; n--) {
-    var rutaPng = cfg.dir + "plus_" + n + ".png";
-    var rutaJpg = cfg.dir + "plus_" + n + ".jpg";
-    var ruta = files.exists(rutaPng) ? rutaPng : (files.exists(rutaJpg) ? rutaJpg : null);
+    var ruta = localizarArchivoPlantilla(cfg.dir, "plus_" + n);
     if (!ruta) continue;
     var tpl = images.read(ruta);
     if (!tpl) continue;
@@ -1249,13 +1392,13 @@ function escanearItensYConstruirCola(cfg, mostrarToast) {
     var plusAct = detectarPlusActualEnPantalla(screen, cfg);
 
     var rutaAuto = cfg.dir + "item_auto.png";
-    var rutaItems = cfg.dir + "items.png";
+    var rutaItems = localizarArchivoPlantilla(cfg.dir, "items");
     var puntos = [];
 
     if (files.exists(rutaAuto)) {
       puntos = encontrarPuntosPlantilla(screen, rutaAuto, cfg.threshold);
     }
-    if (puntos.length === 0 && files.exists(rutaItems)) {
+    if (puntos.length === 0 && rutaItems) {
       puntos = encontrarPuntosPlantilla(screen, rutaItems, cfg.threshold);
     }
 
@@ -1353,13 +1496,13 @@ function detectarYTocar(cfg, nombresCandidatos, etiqueta, delayTap) {
 }
 
 function abrirMenuYTocarAlchemy(cfg) {
-  setEstado("Buscando botón de menú en juego...");
-  var tocoMenu = detectarYTocar(cfg, ["menu", "Menu", "btn_menu"], "menu.png", cfg.delayTap);
+  setEstado("Buscando pergamino/menú en juego...");
+  var tocoMenu = detectarYTocar(cfg, obtenerCandidatosMenuPergamino(), "pergamino/menu", cfg.delayTap);
   if (tocoMenu) {
-    agregarLog("Menú tocado, esperando opciones...");
+    agregarLog("Pergamino/Menú tocado, esperando opciones...");
     sleep(800);
   } else {
-    agregarLog("No se encontró menu.png, intentando tocar botón Alchemy directamente...");
+    agregarLog("No se encontró plantilla de pergamino/menú, intentando tocar Alchemy directamente...");
   }
 
   setEstado("Buscando botón Alchemy...");
@@ -1473,15 +1616,6 @@ function ejecutarEventos(cfg) {
     setEstado("Registro de Guild Boss completado");
     agregarLog("Registro de Guild Boss completado");
   }
-}
-
-function obtenerCandidatosElixir(elixirKey) {
-  if (elixirKey === "accessory") return ["elixir_acceaorio"];
-  return ["elixir_" + elixirKey];
-}
-
-function obtenerCandidatosLucky(luckyDegree) {
-  return ["Lucky_Power_" + luckyDegree];
 }
 
 function ejecutarAlchemy(cfg) {
