@@ -1,7 +1,7 @@
 "ui";
 
 var URL_ACTUALIZACION = "https://raw.githubusercontent.com/carlosamarista02-collab/silkroad-macro/main/silkroad_alchemy_macro.js";
-var VERSION_ACTUAL = "1.3.1";
+var VERSION_ACTUAL = "1.3.2";
 
 try {
   activity.resizeTask && activity.resizeTask(700, 1100);
@@ -105,51 +105,64 @@ function reiniciarStats(modo) {
   };
 }
 
+function normalizarCodigo(texto) {
+  return String(texto || "")
+    .replace(/^\uFEFF/, "")
+    .replace(/\r\n/g, "\n")
+    .replace(/\r/g, "\n")
+    .trim();
+}
+
 function comprobarYActualizarScript() {
   toast("Buscando actualización...");
   agregarLog("Buscando actualización en " + URL_ACTUALIZACION);
 
   threads.start(function () {
     try {
-      var res = http.get(URL_ACTUALIZACION);
+      var sep = URL_ACTUALIZACION.indexOf("?") === -1 ? "?" : "&";
+      var urlSinCache = URL_ACTUALIZACION + sep + "v=" + new Date().getTime();
+
+      var res = http.get(urlSinCache);
       if (!res || res.statusCode !== 200) {
-        toast("No hay actualización");
+        toast("Sin actualización");
         agregarLog("Actualización omitida: respuesta HTTP " + (res ? res.statusCode : "sin respuesta"));
         return;
       }
 
       var nuevoCodigo = String(res.body.string() || "");
-      var limpio = nuevoCodigo.replace(/^\uFEFF/, "").trim();
+      var limpioNuevo = normalizarCodigo(nuevoCodigo);
 
-      if (limpio.length < 200 || limpio.indexOf("mostrarVistaAlchemy") === -1) {
-        toast("No hay actualización válida");
-        agregarLog("Actualización omitida: contenido remoto incompleto");
+      if (limpioNuevo.length < 200 || limpioNuevo.indexOf("mostrarVistaAlchemy") === -1) {
+        toast("Sin actualización");
+        agregarLog("Actualización omitida: archivo remoto vacío o incompleto");
         return;
       }
 
       var fuente = engines.myEngine().getSource();
       var rutaScript = fuente ? String(fuente.toString()) : "";
       if (!rutaScript || !files.exists(rutaScript)) {
-        toast("No se encontró el archivo local");
+        toast("Sin actualización");
         agregarLog("Actualización omitida: ruta local no encontrada");
         return;
       }
 
       var codigoActual = String(files.read(rutaScript) || "");
-      if (codigoActual.replace(/^\uFEFF/, "").trim() === limpio) {
-        toast("No hay actualización");
-        agregarLog("Sin cambios: no se realizó ninguna acción");
+      var limpioActual = normalizarCodigo(codigoActual);
+
+      if (limpioActual === limpioNuevo) {
+        toast("Sin actualización");
+        agregarLog("Sin cambios: el archivo local ya coincide con GitHub");
         return;
       }
 
       files.write(rutaScript, nuevoCodigo);
       toast("Actualizado. Reiniciando...");
-      agregarLog("Nueva versión descargada. Reiniciando...");
+      agregarLog("Nueva versión aplicada. Reiniciando...");
       sleep(700);
       engines.execScriptFile(rutaScript);
       engines.myEngine().forceStop();
     } catch (e) {
-      toast("No hay actualización");
+      toast("Sin actualización");
       agregarLog("Error al revisar actualización (sin cambios): " + e.message);
     }
   });
