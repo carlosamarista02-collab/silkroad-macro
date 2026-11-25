@@ -2,7 +2,7 @@
 
 var URL_ACTUALIZACION = "https://raw.githubusercontent.com/carlosamarista02-collab/silkroad-macro/main/silkroad_alchemy_macro.js";
 var URL_BASE_IMAGENES = "https://raw.githubusercontent.com/carlosamarista02-collab/silkroad-macro/main/";
-var VERSION_ACTUAL = "1.3.4";
+var VERSION_ACTUAL = "1.3.5";
 
 var PLANTILLAS_REPO = [
   "pergamino.png",
@@ -1027,15 +1027,21 @@ function tocarFuseEnJuegoDirecto() {
 }
 
 function abrirJobSroPrueba() {
-  var nombresApp = ["Job Sro", "JobSro", "Job SRO", "Silkroad"];
-  for (var i = 0; i < nombresApp.length; i++) {
+  var nombresDirectos = ["JOB SRO", "Job SRO", "Job Sro", "JobSro", "Silkroad"];
+  var pistas = ["job sro", "jobsro", "job", "sro", "silkroad"];
+
+  for (var i = 0; i < nombresDirectos.length; i++) {
     try {
-      if (app.launchApp(nombresApp[i])) {
-        agregarLog("Abriendo juego con app.launchApp('" + nombresApp[i] + "')");
-        toast("Abriendo " + nombresApp[i] + "...");
+      if (app.launchApp(nombresDirectos[i])) {
+        var msgOk = "Abriendo " + nombresDirectos[i];
+        agregarLog(msgOk);
+        setEstado(msgOk);
+        toast(msgOk);
         return true;
       }
-    } catch (e) {}
+    } catch (e) {
+      agregarLog("launchApp('" + nombresDirectos[i] + "') falló: " + e.message);
+    }
   }
 
   try {
@@ -1045,19 +1051,33 @@ function abrirJobSroPrueba() {
       var p = pkgs.get(j);
       var label = String(p.applicationInfo.loadLabel(pm) || "");
       var pkgName = String(p.packageName || "");
-      if (label.toLowerCase().indexOf("job") !== -1 || label.toLowerCase().indexOf("sro") !== -1 || pkgName.toLowerCase().indexOf("sro") !== -1) {
-        app.launch(pkgName);
-        agregarLog("Abriendo juego detectado: " + label + " (" + pkgName + ")");
-        toast("Abriendo " + label + "...");
-        return true;
+      var combo = (label + " " + pkgName).toLowerCase();
+
+      for (var k = 0; k < pistas.length; k++) {
+        if (combo.indexOf(pistas[k]) !== -1) {
+          var intent = pm.getLaunchIntentForPackage(pkgName);
+          if (intent) {
+            intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK);
+            context.startActivity(intent);
+          } else {
+            app.launch(pkgName);
+          }
+          var msgPkg = "Abriendo " + label + " (" + pkgName + ")";
+          agregarLog(msgPkg);
+          setEstado(msgPkg);
+          toast(msgPkg);
+          return true;
+        }
       }
     }
   } catch (err) {
-    agregarLog("Error buscando app Job Sro: " + err.message);
+    agregarLog("Error buscando paquete JOB SRO: " + err.message);
   }
 
-  agregarLog("No se encontró una app instalada con nombre Job Sro / SRO");
-  toast("No se encontró Job Sro instalada");
+  var msgNo = "No se encontró JOB SRO en la lista de apps. Ábrela manualmente y toca FLOTANTE.";
+  agregarLog(msgNo);
+  setEstado("JOB SRO no encontrada");
+  toast(msgNo);
   return false;
 }
 
@@ -1068,18 +1088,20 @@ function iniciarProcesoAlchemy() {
   alchemyActiva = true;
   paused = false;
 
+  reiniciarStats("Alchemy");
+  setEstado("Buscando JOB SRO...");
+  agregarLog("Botón INICIAR pulsado -> buscando JOB SRO");
+  toast("Buscando JOB SRO...");
+
   if (workerThread && workerThread.isAlive()) {
     try { workerThread.interrupt(); } catch (e) {}
   }
 
   workerThread = threads.start(function () {
     try {
-      reiniciarStats("Alchemy");
-      setEstado("Abriendo Job Sro...");
-      agregarLog("Botón INICIAR pulsado -> intentando abrir Job Sro");
       abrirJobSroPrueba();
     } catch (err) {
-      detenerMacro("Error al abrir Job Sro: " + err.message);
+      detenerMacro("Error al abrir JOB SRO: " + err.message);
     }
   });
 }
